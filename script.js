@@ -1,4 +1,5 @@
 import * as THREE from "./assets/three.module.js";
+import { typebarPose } from "./mechanism.mjs";
 
 const input = document.querySelector("[data-input]");
 const output = document.querySelector("[data-output]");
@@ -25,6 +26,7 @@ const rotateLeftButton = document.querySelector("[data-rotate-left]");
 const rotateRightButton = document.querySelector("[data-rotate-right]");
 const leftMarginButton = document.querySelector("[data-left-margin]");
 const rightMarginButton = document.querySelector("[data-right-margin]");
+const saveLabel = document.querySelector("[data-save-label]");
 const realisticBackspaceButton = document.querySelector("[data-realistic-backspace]");
 const realisticBackspaceLabel = document.querySelector("[data-backspace-label]");
 const commandRail = document.querySelector("[data-command-rail]");
@@ -63,16 +65,16 @@ const introStorageKey = "type-intro-seen-v1";
 const ribbonShortcutColors = ["#201b17", "#641b1f"];
 
 const printHeadMetrics = {
-  glyphCenterX: -0.22,
+  glyphCenterX: 0.5,
   glyphCenterY: 32,
-  contactZ: -0.42,
-  ribbonRestY: 1.9,
-  ribbonRestZ: -0.48,
-  strikeDuration: 220,
-  strikeContactTime: 58,
-  strikeAttackRatio: 0.28,
-  strikeDwellRatio: 0.08,
-  escapementDelay: 74
+  contactZ: -0.59,
+  ribbonRestY: 2.53,
+  ribbonRestZ: -0.52,
+  strikeDuration: 150,
+  strikeContactTime: 45,
+  strikeAttackRatio: 0.3,
+  strikeDwellRatio: 0.04,
+  escapementDelay: 64
 };
 
 const keyRows = [
@@ -139,7 +141,12 @@ const sceneState = {
   paperContext: null,
   paperCanvas: null,
   platen: null,
+  platenKnobs: [],
+  platenAngle: 0,
+  targetPlatenAngle: 0,
   ribbonGuide: null,
+  ribbonSegments: [],
+  ribbonSpools: [],
   impactFlashMesh: null,
   impactFlashLight: null,
   returnLever: null,
@@ -180,11 +187,20 @@ let statusTimer;
 let stateSaveTimer;
 let lastMachineValue = "";
 
+window.lucide?.createIcons();
+const paletteMenu = document.querySelector("[data-palette-menu]");
+const compactToolbar = window.matchMedia("(max-width: 760px)");
+const syncPaletteLayout = () => { paletteMenu.open = !compactToolbar.matches; };
+compactToolbar.addEventListener("change", syncPaletteLayout);
+syncPaletteLayout();
+document.addEventListener("pointerdown", (event) => {
+  if (compactToolbar.matches && !paletteMenu.contains(event.target)) paletteMenu.open = false;
+});
 initScene();
 if (!restoreState()) {
   input.value = seedText;
   input.setSelectionRange(input.value.length, input.value.length);
-  setSidebarExpanded(true, { focus: false, persist: false });
+  setSidebarExpanded(false, { focus: false, persist: false });
 }
 rememberMachineValue();
 syncCarriageFromInput();
@@ -371,15 +387,15 @@ function initScene() {
     preserveDrawingBuffer: true,
     powerPreference: "high-performance"
   });
-  renderer.setPixelRatio(Math.min(Math.max(window.devicePixelRatio || 1, 1.5), 3));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.12;
+  renderer.toneMappingExposure = 1.05;
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x090706, 0.035);
+  scene.background = new THREE.Color(0xedf0ed);
 
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
   camera.position.set(0, 5.5, 10.6);
@@ -401,12 +417,15 @@ function initScene() {
 }
 
 function buildLighting(scene) {
-  scene.add(new THREE.HemisphereLight(0xffedd0, 0x070606, 1.15));
+  scene.add(new THREE.HemisphereLight(0xfafffa, 0x869389, 2.3));
 
-  const key = new THREE.DirectionalLight(0xffe0a8, 4.8);
+  const key = new THREE.DirectionalLight(0xfffaf0, 3.3);
   key.position.set(-4.5, 8, 6.5);
   key.castShadow = true;
-  key.shadow.mapSize.set(4096, 4096);
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.bias = -0.00025;
+  key.shadow.normalBias = 0.025;
+  key.shadow.radius = 4;
   key.shadow.camera.near = 1;
   key.shadow.camera.far = 22;
   key.shadow.camera.left = -7;
@@ -415,40 +434,50 @@ function buildLighting(scene) {
   key.shadow.camera.bottom = -7;
   scene.add(key);
 
-  const rim = new THREE.DirectionalLight(0x7aa8ff, 0.9);
+  const rim = new THREE.DirectionalLight(0xe4eee9, 1.8);
   rim.position.set(4.5, 5.5, -6);
   scene.add(rim);
 
-  const paperGlow = new THREE.PointLight(0xffd79a, 1.7, 9);
+  const paperGlow = new THREE.PointLight(0xffffff, 0.8, 9);
   paperGlow.position.set(0, 3.8, 1.8);
   scene.add(paperGlow);
 
-  const frontFill = new THREE.PointLight(0xf4c982, 2.8, 8);
+  const frontFill = new THREE.PointLight(0xffffff, 2.1, 10);
   frontFill.position.set(0, 2.1, 4.9);
   scene.add(frontFill);
 
-  const keyGlow = new THREE.PointLight(0xffd8a6, 2.6, 5.4);
+  const keyGlow = new THREE.PointLight(0xf4fff0, 1.2, 8);
   keyGlow.position.set(0, 1.75, 4.1);
   scene.add(keyGlow);
+
+  // Studio panels give the enamel and steel broad, physical reflections.
+  const room = new THREE.Scene();
+  room.background = new THREE.Color(0xb6c1b8);
+  [[-6, 5, 2], [6, 4, -2], [0, 8, 0]].forEach(([x, y, z]) => {
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(7, 5), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+    panel.position.set(x, y, z);
+    panel.lookAt(0, 0, 0);
+    room.add(panel);
+  });
+  const generator = new THREE.PMREMGenerator(sceneState.renderer);
+  scene.environment = generator.fromScene(room, 0.025).texture;
+  generator.dispose();
+  room.traverse((object) => {
+    if (object.isMesh) { object.geometry.dispose(); object.material.dispose(); }
+  });
 }
 
 function buildDesk(scene) {
   const deskMaterial = new THREE.MeshStandardMaterial({
-    color: 0x22170f,
-    roughness: 0.84,
-    metalness: 0.05
+    color: 0xe3e9e3,
+    roughness: 0.94,
+    metalness: 0
   });
-  const desk = new THREE.Mesh(new THREE.BoxGeometry(18, 0.28, 12), deskMaterial);
+  const desk = new THREE.Mesh(new THREE.BoxGeometry(120, 0.28, 120), deskMaterial);
   desk.position.set(0, -0.82, 0.5);
   desk.receiveShadow = true;
   scene.add(desk);
 
-  const back = new THREE.Mesh(
-    new THREE.PlaneGeometry(32, 18),
-    new THREE.MeshBasicMaterial({ color: 0x050403 })
-  );
-  back.position.set(0, 5.8, -8.2);
-  scene.add(back);
 }
 
 function buildTypewriter(scene) {
@@ -468,7 +497,7 @@ function buildTypewriter(scene) {
     metalness: 0.62
   });
   const brass = new THREE.MeshStandardMaterial({
-    color: 0xd2a35e,
+    color: 0xbabbb1,
     roughness: 0.3,
     metalness: 0.86
   });
@@ -999,6 +1028,7 @@ function addPlaten(machine, darkRubber, brass) {
     knob.rotation.z = Math.PI / 2;
     knob.position.set(x, 3.0, -1.03);
     knob.castShadow = true;
+    sceneState.platenKnobs.push(knob);
     carriage.add(knob);
 
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.49, 0.035, 12, 48), brass);
@@ -1257,43 +1287,51 @@ function addRibbon(machine, black, brass, ribbonRed) {
     machine.add(stem);
 
     const spool = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.22, 48), black);
-    spool.position.set(x, 1.52, 0.15);
-    spool.rotation.x = Math.PI / 2;
+    spool.position.set(x, 1.8, 0.2);
+    sceneState.ribbonSpools.push(spool);
     spool.castShadow = true;
     machine.add(spool);
 
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.035, 12, 48), brass);
-    ring.position.set(x, 1.52, 0.28);
+    ring.position.set(x, 1.92, 0.2);
+    ring.rotation.x = Math.PI / 2;
     ring.castShadow = true;
     machine.add(ring);
 
     for (let i = 0; i < 5; i += 1) {
       const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.24, 18), black);
       const angle = i * Math.PI * 0.4;
-      hole.position.set(x + Math.cos(angle) * 0.28, 1.52 + Math.sin(angle) * 0.28, 0.31);
-      hole.rotation.x = Math.PI / 2;
+      hole.position.set(x + Math.cos(angle) * 0.28, 1.93, 0.2 + Math.sin(angle) * 0.28);
       machine.add(hole);
     }
   });
 
-  const leftRibbon = makeRibbonSegment(new THREE.Vector3(-3.55, 1.46, 0.3), new THREE.Vector3(-0.1, 1.92, -0.55), 0.09, ribbonFabric);
-  const rightRibbon = makeRibbonSegment(new THREE.Vector3(3.55, 1.46, 0.3), new THREE.Vector3(0.1, 1.92, -0.55), 0.09, ribbonFabric);
-  machine.add(leftRibbon, rightRibbon);
+  [-1, 1].forEach((side) => {
+    const from = new THREE.Vector3(side * 3.15, 1.88, 0.2);
+    const fixedGuide = new THREE.Vector3(side * 0.64, 2.48, -0.48);
+    const fixedRibbon = makeRibbonSegment(from, fixedGuide, 0.065, ribbonFabric);
+    const movingRibbon = makeRibbonSegment(fixedGuide, new THREE.Vector3(side * 0.2, printHeadMetrics.ribbonRestY, printHeadMetrics.ribbonRestZ + 0.045), 0.065, ribbonFabric);
+    sceneState.ribbonSegments.push({ mesh: movingRibbon, from: fixedGuide, side });
+    const post = cylinderBetween(new THREE.Vector3(side * 0.64, 1.68, -0.48), fixedGuide, 0.018, brass);
+    machine.add(fixedRibbon, movingRibbon, post);
+  });
 
   const ribbonGuide = new THREE.Group();
-  const guideFrame = roundedBox(0.82, 0.12, 0.16, 0.04, brass);
-  const ribbonWindow = roundedBox(0.7, 0.045, 0.045, 0.018, ribbonFabric);
+  const guideFrame = roundedBox(0.5, 0.035, 0.06, 0.015, brass);
+  const ribbonWindow = roundedBox(0.44, 0.085, 0.022, 0.008, ribbonFabric);
   ribbonWindow.position.set(0, 0.012, 0.045);
-  const strikeWindow = roundedBox(0.18, 0.16, 0.028, 0.012, black);
-  strikeWindow.position.set(0, 0.018, -0.04);
-  ribbonGuide.add(guideFrame, ribbonWindow, strikeWindow);
+  const leftFork = roundedBox(0.025, 0.17, 0.05, 0.01, brass);
+  const rightFork = roundedBox(0.025, 0.17, 0.05, 0.01, brass);
+  leftFork.position.set(-0.24, 0.05, 0);
+  rightFork.position.set(0.24, 0.05, 0);
+  ribbonGuide.add(guideFrame, ribbonWindow, leftFork, rightFork);
   ribbonGuide.position.set(0, printHeadMetrics.ribbonRestY, printHeadMetrics.ribbonRestZ);
   ribbonGuide.rotation.x = -0.12;
   sceneState.ribbonGuide = ribbonGuide;
   machine.add(ribbonGuide);
 
   const ribbonBacker = roundedBox(1.72, 0.08, 0.038, 0.02, ribbonFabric);
-  ribbonBacker.position.set(0, 1.88, -0.58);
+  ribbonBacker.position.set(0, 2.46, -0.58);
   ribbonBacker.rotation.x = -0.08;
   ribbonBacker.castShadow = true;
   machine.add(ribbonBacker);
@@ -1309,19 +1347,19 @@ function addPrintPointGuide(machine, brass) {
   });
   const target = getPrintHeadTarget();
   const leftGuide = cylinderBetween(
-    new THREE.Vector3(-0.22, target.y - 0.18, target.z + 0.05),
-    new THREE.Vector3(-0.08, target.y + 0.18, target.z + 0.02),
+    new THREE.Vector3(-0.16, 2.46, target.z + 0.05),
+    new THREE.Vector3(-0.16, target.y + 0.16, target.z + 0.02),
     0.012,
     guideMaterial
   );
   const rightGuide = cylinderBetween(
-    new THREE.Vector3(0.22, target.y - 0.18, target.z + 0.05),
-    new THREE.Vector3(0.08, target.y + 0.18, target.z + 0.02),
+    new THREE.Vector3(0.16, 2.46, target.z + 0.05),
+    new THREE.Vector3(0.16, target.y + 0.16, target.z + 0.02),
     0.012,
     guideMaterial
   );
-  const bridge = roundedBox(0.46, 0.035, 0.03, 0.012, guideMaterial);
-  bridge.position.set(0, target.y + 0.18, target.z + 0.03);
+  const bridge = roundedBox(0.36, 0.035, 0.03, 0.012, guideMaterial);
+  bridge.position.set(0, 2.46, target.z + 0.05);
   bridge.castShadow = true;
   machine.add(leftGuide, rightGuide, bridge);
 
@@ -1349,26 +1387,30 @@ function addTypebars(machine, brass, black) {
     roughness: 0.34,
     metalness: 0.9
   });
-  const count = 31;
+  const count = printableTypeOrder.length;
   for (let i = 0; i < count; i += 1) {
     const t = count === 1 ? 0 : i / (count - 1);
     const side = Math.abs(t - 0.5);
     const spread = (t - 0.5) * 3.96;
-    const start = new THREE.Vector3(spread, 1.34, 0.36 + side * 0.05);
+    const start = new THREE.Vector3((t - 0.5) * 2.2, 1.7 + Math.sin(t * Math.PI) * 0.17, -0.35 - Math.sin(t * Math.PI) * 0.16);
     const target = getPrintHeadTarget();
-    const rest = new THREE.Vector3(spread * 0.3, 1.6 + (0.5 - side) * 0.12, -0.16 + side * 0.07);
+    const radius = start.distanceTo(target);
+    const restDirection = new THREE.Vector3(spread * 1.1, 1.36, 0.9 + Math.sin(t * Math.PI) * 0.4).sub(start).normalize();
+    const contactDirection = target.clone().sub(start).normalize();
+    const rest = start.clone().addScaledVector(restDirection, radius);
+    const swing = new THREE.Quaternion().setFromUnitVectors(restDirection, contactDirection);
     const rod = cylinderBetween(start, rest, 0.018, agedSteel);
-    const slug = roundedBox(0.2, 0.13, 0.075, 0.016, agedSteel);
+    const slug = roundedBox(0.09, 0.1, 0.06, 0.01, agedSteel);
     slug.position.copy(rest);
     slug.lookAt(getPrintSlugLookTarget(target));
-    const hinge = new THREE.Mesh(new THREE.SphereGeometry(0.048, 14, 10), agedSteel);
+    const contactOrientation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+    const restOrientation = swing.clone().invert().multiply(contactOrientation);
+    const hinge = new THREE.Mesh(new THREE.SphereGeometry(0.032, 14, 10), agedSteel);
     hinge.position.copy(start);
-    rod.visible = false;
-    slug.visible = false;
-    hinge.visible = false;
-    const arm = { start, rest, target, arcHeight: 0.3 + side * 0.08, rod, slug, hinge, strikeStart: -Infinity, intensity: 0, phase: i / count };
+    const mount = cylinderBetween(new THREE.Vector3(start.x, 1.34, start.z), start, 0.014, agedSteel);
+    const arm = { start, rest, target, radius, restDirection, swing, restOrientation, rod, slug, hinge, strikeStart: -Infinity, intensity: 0, phase: i / count };
     sceneState.typebars.push(arm);
-    machine.add(rod, slug, hinge);
+    machine.add(rod, slug, hinge, mount);
   }
 
   const basket = new THREE.Mesh(new THREE.TorusGeometry(2.06, 0.032, 12, 112, Math.PI), brass);
@@ -1385,24 +1427,6 @@ function addTypebars(machine, brass, black) {
   );
   machine.add(hingeRail);
 
-  for (let i = 0; i < 33; i += 1) {
-    const t = i / 32;
-    const side = Math.abs(t - 0.5);
-    const spread = (t - 0.5) * 3.82;
-    const start = new THREE.Vector3(spread, 1.36, 0.4 + side * 0.04);
-    const tip = new THREE.Vector3(spread * 0.16, 1.78 + (0.5 - side) * 0.14, -0.2 + side * 0.07);
-    const visibleBar = cylinderBetween(start, tip, i % 4 === 0 ? 0.011 : 0.008, agedSteel);
-    visibleBar.castShadow = true;
-    machine.add(visibleBar);
-
-    if (i % 3 === 0) {
-      const slug = roundedBox(0.075, 0.035, 0.045, 0.008, black);
-      slug.position.copy(tip);
-      slug.lookAt(getPrintSlugLookTarget());
-      machine.add(slug);
-    }
-  }
-
   const segmentCover = roundedBox(4.28, 0.12, 0.24, 0.08, black);
   segmentCover.position.set(0, 0.76, 0.54);
   segmentCover.rotation.x = -0.12;
@@ -1413,7 +1437,7 @@ function addTypebars(machine, brass, black) {
 
 function addKeys(machine, black, brass) {
   const keyMaterial = new THREE.MeshStandardMaterial({
-    color: 0x24180f,
+    color: 0x1b1e1b,
     roughness: 0.38,
     metalness: 0.58
   });
@@ -1449,7 +1473,7 @@ function addKeys(machine, black, brass) {
 
       if (label) {
         const labelMesh = makeKeyLabel(label, width, variant);
-        labelMesh.position.y = variant === "space" || variant === "wide" ? 0.164 : 0.108;
+        labelMesh.position.y = variant === "space" ? 0.164 : 0.108;
         labelMesh.rotation.x = -Math.PI / 2;
         key.add(labelMesh);
       }
@@ -1462,7 +1486,7 @@ function addKeys(machine, black, brass) {
       }
       key.addEventListener = null;
       machine.add(key);
-      cursor += width + 0.08;
+      cursor += width + rowGap;
     });
   });
 
@@ -1471,7 +1495,7 @@ function addKeys(machine, black, brass) {
 }
 
 function addKeyCap(key, width, variant, keyMaterial, brass) {
-  if (variant === "wide" || variant === "space") {
+  if (variant === "space") {
     const stemCount = variant === "space" ? 3 : 2;
     const span = variant === "space" ? width * 0.34 : width * 0.28;
     for (let i = 0; i < stemCount; i += 1) {
@@ -1844,7 +1868,7 @@ function keyUnit(variant) {
     return 10.2;
   }
   if (variant === "wide") {
-    return 2.15;
+    return 1.3;
   }
   return 1;
 }
@@ -1863,8 +1887,8 @@ function makeKeyLabel(label, width, variant) {
     depthTest: true,
     toneMapped: false
   });
-  const labelWidth = variant === "wide" ? width * 0.78 : variant === "space" ? width * 0.78 : width * 0.62;
-  const labelDepth = variant === "wide" ? 0.3 : variant === "space" ? 0.23 : width * 0.62;
+  const labelWidth = variant === "space" ? width * 0.78 : width * 0.81;
+  const labelDepth = variant === "space" ? 0.23 : width * 0.81;
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(labelWidth, labelDepth), material);
   mesh.renderOrder = 10;
   return mesh;
@@ -1880,9 +1904,9 @@ function drawKeyLabel(label, variant) {
 
   context.save();
   context.fillStyle = "rgba(244, 232, 204, 0.98)";
-  context.strokeStyle = "rgba(185, 142, 78, 0.9)";
+  context.strokeStyle = "rgba(126, 134, 124, 0.82)";
   context.lineWidth = 9;
-  if (variant === "wide" || variant === "space") {
+  if (variant === "space") {
     roundedRectPath(context, 34, variant === "space" ? 150 : 122, size - 68, variant === "space" ? 212 : 268, 58);
     context.fill();
     context.stroke();
@@ -1906,7 +1930,7 @@ function drawKeyLabel(label, variant) {
   } else if (variant === "space") {
     context.font = "800 72px Georgia";
   } else {
-    context.font = lines.length > 1 ? "800 138px Georgia" : "800 242px Georgia";
+    context.font = lines.length > 1 ? "500 138px Georgia" : "500 242px Georgia";
   }
   const lineStep = variant === "wide" ? 108 : 152;
   lines.forEach((line, index) => {
@@ -2008,42 +2032,43 @@ function roundedRectPath(context, x, y, width, height, radius) {
 }
 
 function roundedBox(width, height, depth, radius, material) {
-  const group = new THREE.Group();
-  const core = new THREE.Mesh(
-    new THREE.BoxGeometry(Math.max(0.01, width - radius * 2), height, depth),
-    material
-  );
-  const side = new THREE.Mesh(
-    new THREE.BoxGeometry(width, height, Math.max(0.01, depth - radius * 2)),
-    material
-  );
-  group.add(core, side);
-  [
-    [-1, -1], [1, -1], [-1, 1], [1, 1]
-  ].forEach(([sx, sz]) => {
-    const corner = new THREE.Mesh(new THREE.SphereGeometry(radius, 18, 12), material);
-    corner.scale.y = height / (radius * 2);
-    corner.position.set(sx * (width / 2 - radius), 0, sz * (depth / 2 - radius));
-    group.add(corner);
-  });
-  group.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-    }
-  });
-  return group;
+  const bevel = Math.min(radius, width / 2, height / 2, depth / 2) * 0.98;
+  const geometry = new THREE.BoxGeometry(width, height, depth, 8, 8, 8);
+  const position = geometry.attributes.position;
+  const half = new THREE.Vector3(width / 2, height / 2, depth / 2);
+  const inner = half.clone().addScalar(-bevel);
+  const point = new THREE.Vector3();
+  const closest = new THREE.Vector3();
+  const edge = (value, extent) => {
+    const u = Math.abs(value) / extent;
+    return Math.sign(value) * (u < 0.5 ? u * 2 * (extent - bevel) : extent - bevel + (u - 0.5) * 2 * bevel);
+  };
+  for (let i = 0; i < position.count; i += 1) {
+    point.set(edge(position.getX(i), half.x), edge(position.getY(i), half.y), edge(position.getZ(i), half.z));
+    closest.copy(point).clamp(inner.clone().negate(), inner);
+    point.sub(closest).normalize().multiplyScalar(bevel).add(closest);
+    position.setXYZ(i, point.x, point.y, point.z);
+  }
+  geometry.computeVertexNormals();
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
 }
 
 function makeRibbonSegment(from, to, thickness, material) {
-  const midpoint = new THREE.Vector3().addVectors(from, to).multiplyScalar(0.5);
   const length = from.distanceTo(to);
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(length, thickness, 0.035), material);
-  mesh.position.copy(midpoint);
-  mesh.rotation.y = Math.atan2(from.z - to.z, to.x - from.x);
-  mesh.rotation.z = Math.atan2(to.y - from.y, Math.hypot(to.x - from.x, to.z - from.z));
+  updateRibbonSegment(mesh, from, to);
   mesh.castShadow = true;
   return mesh;
+}
+
+function updateRibbonSegment(mesh, from, to) {
+  const direction = to.clone().sub(from);
+  mesh.position.copy(from).add(to).multiplyScalar(0.5);
+  mesh.scale.x = direction.length() / mesh.geometry.parameters.width;
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), direction.normalize());
 }
 
 function makeRibbonFabricMaterial() {
@@ -2051,9 +2076,9 @@ function makeRibbonFabricMaterial() {
   ribbonCanvas.width = 512;
   ribbonCanvas.height = 96;
   const context = ribbonCanvas.getContext("2d");
-  const gradient = context.createLinearGradient(0, 0, ribbonCanvas.width, 0);
+  const gradient = context.createLinearGradient(0, 0, 0, ribbonCanvas.height);
   gradient.addColorStop(0, "#16100d");
-  gradient.addColorStop(0.48, "#201713");
+  gradient.addColorStop(0.49, "#201713");
   gradient.addColorStop(0.5, "#5c1114");
   gradient.addColorStop(1, "#811c20");
   context.fillStyle = gradient;
@@ -2076,7 +2101,7 @@ function makeRibbonFabricMaterial() {
   texture.anisotropy = 16;
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(2.4, 1);
+  texture.repeat.set(3, 1);
 
   return new THREE.MeshStandardMaterial({
     map: texture,
@@ -2485,11 +2510,14 @@ function moveToNextTabStop() {
 
 function moveRoller(delta) {
   input.focus({ preventScroll: true });
-  typewriterState.rollOffset = Math.max(
-    -paperMetrics.lineHeight * 6,
-    Math.min(paperMetrics.lineHeight * 6, typewriterState.rollOffset + delta * (paperMetrics.lineHeight / 3))
-  );
-  renderPage();
+  const nextRow = Math.max(0, typewriterState.row - delta);
+  if (nextRow === typewriterState.row) return;
+  typewriterState.row = nextRow;
+  typewriterState.rollOffset = 0;
+  const lines = getPaperLines();
+  ensurePaperLine(lines, nextRow);
+  sceneState.targetPlatenAngle += delta * 0.54;
+  writePaperLines(lines);
   strikeMachine(delta > 0 ? "PageDown" : "PageUp");
   playReturn();
   setTemporaryStatus(delta > 0 ? "Roller down" : "Roller up");
@@ -2508,6 +2536,7 @@ function returnCarriage() {
   renderPage();
   strikeMachine("Enter");
   sceneState.returnSweep = 1;
+  sceneState.targetPlatenAngle -= 0.54;
   sceneState.carriageJerk = -0.5;
   playReturn();
   setTemporaryStatus("Carriage return");
@@ -2601,11 +2630,6 @@ function strikeMachine(value) {
   }
 
   const now = performance.now();
-  sceneState.typebars.forEach((arm) => {
-    arm.strikeStart = -Infinity;
-    arm.intensity = 0;
-  });
-
   if (printableStrike) {
     const index = keyIndexForValue(normalized);
     const primary = sceneState.typebars[index % sceneState.typebars.length];
@@ -2627,7 +2651,9 @@ function strikeMachine(value) {
     sceneState.paperImpact = 1;
   }
   sceneState.ribbonPulse = printableStrike ? 1 : Math.max(sceneState.ribbonPulse, 0.28);
-  sceneState.carriageJerk += normalized === "Enter" ? -0.34 : printableStrike ? 0.082 : 0.055;
+  if (!printableStrike) {
+    sceneState.carriageJerk += normalized === "Enter" ? -0.16 : 0.012;
+  }
 }
 
 function keyIndexForValue(value) {
@@ -2763,10 +2789,10 @@ function drawPaper() {
     if (char === " ") {
       return;
     }
-    const strength = 0.62 + Math.abs(jitter(seed + 5, 0.46));
-    const overHit = strength > 0.97;
-    const underHit = strength < 0.74;
-    context.globalAlpha = Math.max(0.42, Math.min(0.98, baseAlpha * strength));
+    const strength = 0.9 + Math.abs(jitter(seed + 5, 0.22));
+    const overHit = strength > 1.08;
+    const underHit = strength < 0.98;
+    context.globalAlpha = Math.max(0.68, Math.min(0.98, baseAlpha * strength));
     context.fillStyle = sceneState.ink;
     context.save();
     context.translate(x + jitter(seed, 1.75), y + jitter(seed + 17, 2.4));
@@ -2848,16 +2874,6 @@ function updateCarriage() {
   sceneState.targetCarriageShift = Math.max(-3.18, Math.min(3.18, targetShift));
 }
 
-function typebarTipPosition(arm, lift) {
-  const t = Math.max(0, Math.min(1, lift));
-  const eased = easeInOutSine(t);
-  const end = arm.rest.clone().lerp(arm.target, eased);
-  const arc = Math.sin(eased * Math.PI) * (arm.arcHeight || 0.22);
-  end.y += arc;
-  end.z -= arc * 0.18;
-  return end;
-}
-
 function typebarLift(elapsed, intensity = 1) {
   if (elapsed < 0 || elapsed >= printHeadMetrics.strikeDuration || intensity <= 0) {
     return 0;
@@ -2911,6 +2927,7 @@ function animate() {
     state.paperImpact = Math.max(state.paperImpact, 1);
     state.impactFlash = 1;
     state.paperImpactStart = 0;
+    state.ribbonSpools.forEach((spool) => { spool.rotation.y += 0.018; });
   }
   state.paperImpact *= 0.72;
   state.impactFlash *= 0.58;
@@ -2931,8 +2948,11 @@ function animate() {
   }
 
   if (state.platen) {
-    state.platen.rotation.x = -state.returnSweep * 0.45;
-    state.platen.rotation.z = Math.PI / 2;
+    state.platenAngle += (state.targetPlatenAngle - state.platenAngle) * 0.18;
+    const axle = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+    const spin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), state.platenAngle);
+    state.platen.quaternion.copy(axle).multiply(spin);
+    state.platenKnobs.forEach((knob) => { knob.quaternion.copy(state.platen.quaternion); });
   }
 
   if (state.returnLever?.group) {
@@ -2955,24 +2975,16 @@ function animate() {
       arm.intensity = 0;
       arm.strikeStart = -Infinity;
     }
-    const barVisible = lift > 0.025;
-    arm.rod.visible = barVisible;
-    arm.slug.visible = barVisible;
-    arm.hinge.visible = barVisible;
-    const end = typebarTipPosition(arm, lift);
-    end.y += state.shiftLift * 0.055;
-    const impact = typebarImpact(elapsed, arm.intensity);
-    end.y += impact * 0.028;
-    end.z += impact * 0.026;
-    updateCylinderBetween(arm.rod, arm.start, end);
-    arm.slug.position.copy(end);
-    arm.slug.scale.set(1 + impact * 0.22, 1 + impact * 0.12, 1 + impact * 0.08);
-    arm.slug.lookAt(getPrintSlugLookTarget(arm.target));
+    const pose = typebarPose(arm, lift);
+    updateCylinderBetween(arm.rod, arm.start, pose.tip);
+    arm.slug.position.copy(pose.tip);
+    arm.slug.scale.setScalar(1);
+    arm.slug.quaternion.copy(pose.orientation);
   });
   if (state.paperMesh) {
     state.paperAngle += (state.targetPaperAngle - state.paperAngle) * 0.16;
-    state.paperMesh.position.z = -0.55 + state.paperImpact * 0.035;
-    state.paperMesh.position.y = paperMetrics.planeCenterY + state.returnSweep * 0.045;
+    state.paperMesh.position.z = -0.55;
+    state.paperMesh.position.y = paperMetrics.planeCenterY;
     state.paperMesh.rotation.z = state.paperAngle;
   }
 
@@ -2985,6 +2997,9 @@ function animate() {
     const lift = Math.max(strikeRibbonLift, Math.min(1, state.ribbonPulse * 0.52));
     state.ribbonGuide.position.y = printHeadMetrics.ribbonRestY + (printTarget.y - 0.02 - printHeadMetrics.ribbonRestY) * lift;
     state.ribbonGuide.position.z = printHeadMetrics.ribbonRestZ + (printTarget.z + 0.04 - printHeadMetrics.ribbonRestZ) * lift;
+    state.ribbonSegments.forEach(({ mesh, from, side }) => {
+      updateRibbonSegment(mesh, from, new THREE.Vector3(side * 0.2, state.ribbonGuide.position.y + 0.012, state.ribbonGuide.position.z + 0.045));
+    });
   }
 
   if (state.impactFlashMesh) {
@@ -3013,24 +3028,27 @@ function resizeScene() {
   const height = stage.clientHeight;
   sceneState.renderer.setSize(width, height, false);
   sceneState.camera.aspect = width / height;
-  const isCompact = width < 1120;
   const isMobile = width < 760;
   const zoom = sceneState.zoom;
+  const scale = 0.8;
+  sceneState.machine.scale.setScalar(scale);
+  sceneState.baseMachineY = -0.08;
+  sceneState.baseMachineZ = 0;
   if (sceneState.focusMode) {
-    sceneState.cameraTargetPosition.set(0, isMobile ? 3.85 : isCompact ? 3.95 : 4.05, (isMobile ? 8.2 : isCompact ? 6.95 : 6.45) * zoom);
-    sceneState.cameraTargetLookAt.set(0, isMobile ? 1.64 : isCompact ? 1.72 : 1.78, isMobile ? 0.48 : 0.28);
-    sceneState.cameraTargetFov = isMobile ? 27 : isCompact ? 25 : 24;
+    const target = getPrintHeadTarget().multiplyScalar(scale);
+    target.y += sceneState.baseMachineY;
+    sceneState.cameraTargetLookAt.copy(target);
+    sceneState.cameraTargetPosition.set(0, target.y + 0.8, target.z + (isMobile ? 8.4 : 5.7));
+    sceneState.cameraTargetFov = isMobile ? 34 : 29;
   } else {
-    sceneState.cameraTargetPosition.set(0, isMobile ? 5.2 : isCompact ? 5.75 : 6.0, (isMobile ? 17.8 : isCompact ? 16.25 : 15.25) * zoom);
-    sceneState.cameraTargetLookAt.set(0, isMobile ? 1.25 : 1.2, isMobile ? 1.15 : 0.65);
-    sceneState.cameraTargetFov = isMobile ? 40 : isCompact ? 36 : 33;
-  }
-  if (sceneState.machine) {
-    const scale = isMobile ? Math.max(0.36, Math.min(0.4, width / 1000)) : isCompact ? 0.64 : 0.76;
-    sceneState.machine.scale.setScalar(scale);
+    const fov = 34;
+    const tangent = Math.tan(THREE.MathUtils.degToRad(fov / 2));
+    const distance = Math.max(6.4 * scale / (2 * tangent), 15.3 * scale / (2 * tangent * (width / height))) * (isMobile ? 1.15 : 1.47) * zoom;
+    const lookY = 1.85 * scale + sceneState.baseMachineY;
+    sceneState.cameraTargetLookAt.set(0, lookY, 0.55);
+    sceneState.cameraTargetPosition.set(0, lookY + distance * 0.43, 0.55 + distance * 0.9);
+    sceneState.cameraTargetFov = fov;
     sceneState.baseMachineX = 0;
-    sceneState.baseMachineY = isMobile ? 0.36 : isCompact ? 0.02 : 0;
-    sceneState.baseMachineZ = isMobile ? 1.18 : isCompact ? 0.86 : 0.66;
   }
   sceneState.camera.updateProjectionMatrix();
 }
@@ -3056,7 +3074,7 @@ function buildPdf(text) {
 
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    `<< /Type /Pages /Count ${pages.length} /Kids ${pages.map((_, index) => `${3 + index * 2} 0 R`).join(" ")} >>`
+    `<< /Type /Pages /Count ${pages.length} /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(" ")}] >>`
   ];
 
   pages.forEach((pageLines, index) => {
@@ -3220,7 +3238,7 @@ function restoreState() {
   typewriterState.col = Number.isFinite(saved.col) ? Math.max(0, Math.min(activeLine.length, saved.col)) : 0;
   typewriterState.leftMargin = Number.isFinite(saved.leftMargin) ? Math.max(0, saved.leftMargin) : defaultMargins.left;
   typewriterState.rightMargin = Number.isFinite(saved.rightMargin) ? Math.max(typewriterState.leftMargin + 2, saved.rightMargin) : defaultMargins.right;
-  typewriterState.rollOffset = Number.isFinite(saved.rollOffset) ? Math.max(-paperMetrics.lineHeight * 6, Math.min(paperMetrics.lineHeight * 6, saved.rollOffset)) : 0;
+  typewriterState.rollOffset = 0;
   typewriterState.marginRelease = false;
   typewriterState.correctionMode = false;
   typewriterState.realisticBackspace = saved.realisticBackspace !== false;
@@ -3272,7 +3290,7 @@ function restoreState() {
   sceneState.focusMode = false;
   sceneState.targetPaperAngle = Number.isFinite(saved.paperAngle) ? Math.max(-0.42, Math.min(0.42, saved.paperAngle)) : 0;
   sceneState.paperAngle = sceneState.targetPaperAngle;
-  setSidebarExpanded(true, { focus: false, persist: false });
+  setSidebarExpanded(saved.uiVersion === 2 && saved.sidebarExpanded === true, { focus: false, persist: false });
   setTextareaCaretFromCarriage();
   resizeScene();
   return true;
@@ -3288,6 +3306,7 @@ function readSavedState() {
 }
 
 function queueSaveState() {
+  if (saveLabel) saveLabel.textContent = "Saving...";
   if (stateSaveTimer) {
     window.clearTimeout(stateSaveTimer);
   }
@@ -3301,6 +3320,7 @@ function saveStateNow() {
   try {
     window.localStorage.setItem(storageKey, JSON.stringify({
       version: stateVersion,
+      uiVersion: 2,
       text: input.value,
       row: typewriterState.row,
       col: typewriterState.col,
@@ -3317,7 +3337,9 @@ function saveStateNow() {
       soundEnabled,
       zoom: sceneState.zoom
     }));
+    if (saveLabel) saveLabel.textContent = "Saved locally";
   } catch {
+    if (saveLabel) saveLabel.textContent = "Not saved";
     // Private browsing or locked-down storage should not block the simulator.
   }
 }
@@ -3426,6 +3448,8 @@ function setFocusMode(enabled) {
 
 function updateFocusButton() {
   focusButton?.setAttribute("aria-pressed", String(sceneState.focusMode));
+  focusButton?.setAttribute("aria-label", sceneState.focusMode ? "Full machine view" : "Focus on paper");
+  focusButton?.setAttribute("title", sceneState.focusMode ? "Full machine view" : "Focus on paper");
   if (focusLabel) {
     focusLabel.textContent = sceneState.focusMode ? "Full view" : "Focus";
   }
@@ -3443,6 +3467,7 @@ function toggleRealisticBackspace() {
 
 function updateBackspaceModeButton() {
   realisticBackspaceButton?.setAttribute("aria-pressed", String(typewriterState.realisticBackspace));
+  realisticBackspaceButton?.setAttribute("aria-checked", String(typewriterState.realisticBackspace));
   if (realisticBackspaceLabel) {
     realisticBackspaceLabel.textContent = `Realistic Backspace: ${typewriterState.realisticBackspace ? "On" : "Off"}`;
   }
@@ -3661,7 +3686,11 @@ function shouldRouteGlobalShortcut(event) {
 }
 
 function updateSoundButtons() {
-  soundButtons.forEach((button) => button.setAttribute("aria-pressed", String(soundEnabled)));
+  soundButtons.forEach((button) => {
+    button.setAttribute("aria-pressed", String(soundEnabled));
+    button.setAttribute("aria-label", soundEnabled ? "Sound on" : "Sound off");
+    button.title = soundEnabled ? "Sound on" : "Sound off";
+  });
   soundLabels.forEach((label) => {
     label.textContent = soundEnabled ? "Sound on" : "Sound off";
   });

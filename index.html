@@ -9,48 +9,35 @@
     />
     <title>Type - 3D Typewriter Simulator</title>
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=20260710-5" />
+    <link rel="stylesheet" href="styles.css?v=20261014-6" />
   </head>
   <body>
     <main class="type-app" aria-labelledby="app-title">
       <header class="top-bar" role="toolbar" aria-label="Type controls">
-        <a class="brand" href="./" id="app-title" aria-label="Type home">Type</a>
+        <a class="brand" href="./" id="app-title" aria-label="Type home">Type<span class="brand-dot">.</span></a>
+        <span class="brand-caption">THE WRITING ROOM</span>
 
         <div class="toolbar-cluster">
-          <button class="control-button sound-toggle" type="button" data-sound-toggle aria-pressed="true">
-            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4.5 9.3h3.4l4.6-3.6v12.6l-4.6-3.6H4.5z"></path>
-              <path d="M16 8.3a5.1 5.1 0 0 1 0 7.4"></path>
-              <path d="M18.7 5.8a8.6 8.6 0 0 1 0 12.4"></path>
-            </svg>
-            <span data-sound-label>Sound on</span>
-            <span class="live-dot" aria-hidden="true"></span>
+          <button class="control-button icon-button sound-toggle" type="button" data-sound-toggle aria-pressed="true" aria-label="Sound on" title="Sound on">
+            <i data-lucide="volume-2" class="ui-icon" aria-hidden="true"></i>
+            <span class="sr-only" data-sound-label>Sound on</span>
           </button>
 
-          <button class="control-button reset-button" type="button" data-reset>
-            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 8.7A7.1 7.1 0 1 1 6.2 17"></path>
-              <path d="M5 4.8v3.9h3.9"></path>
-            </svg>
-            Reset
+          <button class="control-button icon-button reset-button" type="button" data-reset aria-label="New sheet" title="New sheet">
+            <i data-lucide="file-plus-2" class="ui-icon" aria-hidden="true"></i>
           </button>
 
-          <button class="control-button focus-toggle" type="button" data-focus-mode aria-pressed="false">
-            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M8.2 4.5H5.7a1.2 1.2 0 0 0-1.2 1.2v2.5"></path>
-              <path d="M15.8 4.5h2.5a1.2 1.2 0 0 1 1.2 1.2v2.5"></path>
-              <path d="M19.5 15.8v2.5a1.2 1.2 0 0 1-1.2 1.2h-2.5"></path>
-              <path d="M8.2 19.5H5.7a1.2 1.2 0 0 1-1.2-1.2v-2.5"></path>
-              <circle cx="12" cy="12" r="2.45"></circle>
-              <path d="M12 8.5v-1.2"></path>
-              <path d="M12 16.7v-1.2"></path>
-            </svg>
-            <span data-focus-label>Focus</span>
+          <button class="control-button icon-button focus-toggle" type="button" data-focus-mode aria-pressed="false" aria-label="Focus on paper" title="Focus on paper">
+            <i data-lucide="focus" class="ui-icon" aria-hidden="true"></i>
+            <span class="sr-only" data-focus-label>Focus</span>
           </button>
         </div>
 
+        <details class="palette-menu" data-palette-menu open>
+          <summary class="control-button icon-button" role="button" aria-label="Ribbon and paper colors" title="Ribbon and paper colors"><i data-lucide="palette" class="ui-icon" aria-hidden="true"></i></summary>
+          <div class="palette-options">
         <div class="toolbar-cluster swatch-group" aria-label="Ink color">
-          <span class="tool-label">Ink</span>
+          <span class="tool-label">Ribbon</span>
           <button class="swatch ink-swatch is-selected" type="button" data-ink="#201b17" style="--swatch: #201b17" aria-label="Black ink" aria-pressed="true"></button>
           <button class="swatch ink-swatch" type="button" data-ink="#1d2b53" style="--swatch: #1d2b53" aria-label="Blue ink" aria-pressed="false"></button>
           <button class="swatch ink-swatch" type="button" data-ink="#641b1f" style="--swatch: #641b1f" aria-label="Burgundy ink" aria-pressed="false"></button>
@@ -62,32 +49,33 @@
           <button class="swatch paper-swatch" type="button" data-paper="linen" style="--swatch: #dbc39c" aria-label="Linen paper" aria-pressed="false"></button>
           <button class="swatch paper-swatch" type="button" data-paper="mist" style="--swatch: #d8d4c9" aria-label="Mist paper" aria-pressed="false"></button>
         </div>
+          </div>
+        </details>
 
         <button class="control-button export-button" type="button" data-export-pdf aria-label="Export PDF" title="Export PDF">
-          <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M7 3.8h7l3 3v13.4H7z"></path>
-            <path d="M14 3.8v4h4"></path>
-            <path d="M12 10.5v5"></path>
-            <path d="m9.8 13.4 2.2 2.2 2.2-2.2"></path>
-          </svg>
+          <i data-lucide="download" class="ui-icon" aria-hidden="true"></i>
           <span>Export PDF</span>
         </button>
       </header>
 
       <aside class="command-rail" data-command-rail aria-label="Typewriter shortcuts" aria-hidden="false">
         <div class="rail-header">
-          <strong>Shortcuts</strong>
+          <strong>Machine controls</strong>
           <button
             class="rail-mode"
             type="button"
             data-realistic-backspace
             aria-pressed="true"
+            role="switch"
+            aria-checked="true"
             title="When on, Backspace moves the carriage without erasing ink."
           >
+            <span class="switch-track" aria-hidden="true"></span>
             <span data-backspace-label>Realistic Backspace: On</span>
           </button>
           <button class="rail-collapse" type="button" data-sidebar-toggle aria-expanded="true" title="Hide the shortcut panel.">
-            <span data-sidebar-label>Hide</span>
+            <i data-lucide="chevron-down" class="ui-icon" aria-hidden="true"></i>
+            <span class="sr-only" data-sidebar-label>Hide</span>
           </button>
         </div>
         <div class="rail-actions" aria-label="Typewriter controls">
@@ -124,8 +112,13 @@
         </div>
       </aside>
       <button class="rail-peek" type="button" data-sidebar-toggle aria-expanded="false" aria-hidden="true" hidden>
+        <i data-lucide="keyboard" class="ui-icon" aria-hidden="true"></i>
         <span data-sidebar-label>Shortcuts</span>
       </button>
+      <footer class="workspace-footer">
+        <span class="page-caption"><span class="save-dot" aria-hidden="true"></span> Your page <span class="save-label" data-save-label>Saved locally</span></span>
+        <span class="machine-caption">TYPE / No. 01</span>
+      </footer>
 
       <section class="scene-stage" aria-label="3D typewriter simulator" data-stage>
         <canvas class="typewriter-canvas" data-scene aria-hidden="true"></canvas>
@@ -139,6 +132,7 @@
           aria-label="Type your page"
         ></textarea>
         <div class="intro-hint" data-intro-hint role="status" aria-hidden="false">
+          <i data-lucide="corner-down-left" class="ui-icon" aria-hidden="true"></i>
           <span>Click anywhere and start typing.</span>
         </div>
         <div class="mobile-assist" data-mobile-assist>
@@ -188,6 +182,7 @@
       </section>
     </main>
 
-    <script type="module" src="script.js?v=20260710-5"></script>
+    <script src="assets/lucide.min.js"></script>
+    <script type="module" src="script.js?v=20261014-6"></script>
   </body>
 </html>
